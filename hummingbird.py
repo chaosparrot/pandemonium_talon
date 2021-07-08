@@ -4,6 +4,38 @@ from dataclasses import dataclass, asdict
 from talon.screen import Screen, main_screen
 import time
 
+class InputThrottler:
+    """Interface used for throttling inputs"""
+    
+    def clear(self):
+        """Clear internal state for throttling"""
+        pass
+
+    def should_throttle(self, ts: float, direction: str) -> bool:
+        """Whether or not to throttle an action"""
+        return False
+
+class FlatThrottler(InputThrottler):
+    """Class used for throttling all directions equally"""
+    throttle: float
+    starting_throttle: float
+    last_action: float
+    
+    def __init__(self, throttle=0.000, starting_throttle=None):
+        self.throttle = throttle
+        self.starting_throttle = throttle if starting_throttle is None else starting_throttle
+        # TODO PROPER TWO STAGE THROTTLE!
+        self.last_action = 0.0
+
+    def clear(self):
+        self.last_action = 0.0
+        
+    def should_throttle(self, ts: float, direction: str) -> bool:
+        if (self.last_action + self.throttle) > ts:
+            return True
+        self.last_action = ts
+        return False
+    
 @dataclass
 class DirectionActions:
     cancel_type: str
@@ -13,6 +45,7 @@ class DirectionActions:
     down: Callable[[float], None]
     forward: Callable[[float], None]
     backward: Callable[[float], None]
+    throttler: InputThrottler
 
 def noop_key(ts: float):
     pass
@@ -46,7 +79,8 @@ class HummingBird:
             keypress_key("right"),
             keypress_key("down"),
             action_key(actions.core.repeat),
-            action_key(actions.edit.undo)
+            action_key(actions.edit.undo),
+            FlatThrottler(0.05, 0.2)
         )
         
     def set_direction_actions(self, da: DirectionActions):
@@ -59,6 +93,8 @@ class HummingBird:
     def tick_directions(self):
         ts = time.time()
         for direction in self.current_directions:
+            if self.directions.throttler.should_throttle(ts, direction):
+                continue
             if direction == "up":
 	            self.directions.up(ts)
             elif direction == "left":
@@ -74,7 +110,7 @@ class HummingBird:
 		
     def set_direction(self, new_direction):
         if (self.directions.cancel_type == "mono"):
-            self.clear_directions()
+            self.current_directions = []
         elif (self.directions.cancel_type == "opposite"):
             if self.current_directions == "up" and "down" in self.current_directions:
                 self.current_directions.remove("down")
@@ -90,37 +126,38 @@ class HummingBird:
 
     def clear_directions(self):
         self.current_directions = []
+        self.directions.throttler.clear()
 
     def up(self, ts: float, set_directions=True):
         if set_directions:
-            self.set_direction("up")
-        
-        if not self.job:
+            self.set_direction("up")        
+        if not self.job and not self.directions.throttler.should_throttle(ts, "up"):
             self.directions.up(ts)
     
     def left(self, ts: float, set_directions=True):
         if set_directions:
             self.set_direction("left")
-        if not self.job:
+        if not self.job and not self.directions.throttler.should_throttle(ts, "left"):
             self.directions.left(ts)
     
     def right(self, ts: float, set_directions=True):
         if set_directions:
             self.set_direction("right")
-            
-        if not self.job:
+        if not self.job and not self.directions.throttler.should_throttle(ts, "right"):
             self.directions.right(ts)
         
     def down(self, ts: float, set_directions=True):
         if set_directions:
-            self.set_direction("down")
-    
-        if not self.job:
+            self.set_direction("down")    
+        if not self.job and not self.directions.throttler.should_throttle(ts, "down"):
             self.directions.down(ts)
     
     def forward(self, ts: float):
         if len(self.current_directions) > 0:
             for direction in self.current_directions:
+                if self.directions.throttler.should_throttle(ts, direction):
+                    continue
+            
                 if direction == "up":
                     self.up(ts, False)
                 elif direction == "left":
@@ -135,6 +172,9 @@ class HummingBird:
     def backward(self, ts: float):
         if len(self.current_directions) > 0:
             for direction in self.current_directions:
+                if self.directions.throttler.should_throttle(ts, direction):
+                    continue
+            
                 if direction == "up":
                     self.down(ts, False)
                 elif direction == "left":
@@ -156,7 +196,8 @@ hummingbird_directions = {
         keypress_key("right"),
         keypress_key("down"),
         action_key(actions.core.repeat),
-        action_key(actions.edit.undo)
+        action_key(actions.edit.undo),
+        FlatThrottler(0.05)
     ),
 	"arrows_word": DirectionActions(
 	    "mono",
@@ -165,7 +206,8 @@ hummingbird_directions = {
         action_key(actions.edit.word_right),
         keypress_key("down"),
         action_key(actions.core.repeat),
-        action_key(actions.edit.undo)
+        action_key(actions.edit.undo),
+        FlatThrottler(0.1)
     ),
 	"select": DirectionActions(
 	    "mono",
@@ -174,7 +216,8 @@ hummingbird_directions = {
         action_key(actions.edit.extend_right),
         action_key(actions.edit.extend_down),
         action_key(actions.core.repeat),
-        action_key(actions.edit.undo)
+        action_key(actions.edit.undo),
+        FlatThrottler(0.1)
     ),
 	"select_word": DirectionActions(
 		"mono",
@@ -183,7 +226,8 @@ hummingbird_directions = {
         action_key(actions.edit.extend_word_right),
         action_key(actions.edit.extend_down),
         action_key(actions.core.repeat),
-        action_key(actions.edit.undo)
+        action_key(actions.edit.undo),
+        FlatThrottler(0.05)
     ),    
     "cursor": DirectionActions(
         "mono",
@@ -192,7 +236,8 @@ hummingbird_directions = {
         mouse_move_action(6, 0),
         mouse_move_action(0, 6),
         action_key(actions.core.repeat),
-        action_key(actions.edit.undo)
+        action_key(actions.edit.undo),
+        InputThrottler()
     ),
     "jira": DirectionActions(
     	"mono",    	
@@ -201,7 +246,8 @@ hummingbird_directions = {
         keypress_key("n"),
         keypress_key("j"),
         action_key(actions.core.repeat),
-        action_key(actions.edit.undo)
+        action_key(actions.edit.undo),
+        FlatThrottler(0.1)
     )
 }
 
