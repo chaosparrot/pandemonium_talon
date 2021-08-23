@@ -24,7 +24,10 @@ parrot(hiss:stop):
 parrot(cluck):
 	mouse_click(0)
 parrot(tut):
-	mouse_click(1)
+	key(ctrl:down)
+	mouse_click(0)
+	key(ctrl:up)
+
 parrot(pop):
 	user.power_momentum_stop()
 	user.hummingbird_clear()
@@ -47,21 +50,32 @@ falcon fly:
 	key(f4)
 	user.switch_parrot_mode("parrot_eyemouse")
 
-humming mouse:
+humming fly:
 	user.hummingbird_set("cursor")
-
-link open:
-	key(ctrl:down)
-	mouse_click(0)
-	key(ctrl:up)
 
 parrot(ch):
 	user.hummingbird_continuous()
+parrot(hmm):
+	user.hummingbird_down(ts, "start")
 parrot(hmm:repeat):
-	user.hummingbird_down(ts)
+	user.hummingbird_down(ts, "repeat")
+parrot(hmm:stop):
+	user.hummingbird_down(ts, "stop")
+parrot(hurr):
+	user.hummingbird_right(ts, "start")
 parrot(hurr:repeat):
-	user.hummingbird_right(ts)
+	user.hummingbird_right(ts, "repeat")
+parrot(hurr:stop):
+	user.hummingbird_right(ts, "stop")
+parrot(yee):
+	user.hummingbird_up(ts, "start")
 parrot(yee:repeat):
-	user.hummingbird_up(ts)
+	user.hummingbird_up(ts, "repeat")
+parrot(yee:stop):
+	user.hummingbird_up(ts, "stop")
+parrot(lll):
+	user.hummingbird_left(ts, "start")
 parrot(lll:repeat):
-	user.hummingbird_left(ts)
+	user.hummingbird_left(ts, "repeat")
+parrot(lll:stop):
+	user.hummingbird_left(ts, "stop")

@@ -11,7 +11,7 @@ class InputThrottler:
         """Clear internal state for throttling"""
         pass
 
-    def should_throttle(self, ts: float, direction: str) -> bool:
+    def should_throttle(self, ts: float, direction: str, lifecycle: str) -> bool:
         """Whether or not to throttle an action"""
         return False
 
@@ -21,19 +21,41 @@ class FlatThrottler(InputThrottler):
     starting_throttle: float
     last_action: float
     
+    # Used for grace periods of discrete vs continuous
+    direction_start: float
+    direction_stop: float
+    last_duration: float
+    
     def __init__(self, throttle=0.000, starting_throttle=None):
         self.throttle = throttle
-        self.starting_throttle = throttle if starting_throttle is None else starting_throttle
-        # TODO PROPER TWO STAGE THROTTLE!
-        self.last_action = 0.0
+        self.starting_throttle = 0.0 if starting_throttle is None else starting_throttle
+
+        self.clear()
 
     def clear(self):
         self.last_action = 0.0
+        self.direction_start = 0.0
+        self.direction_stop = 0.0
+        self.last_duration = 0.0
         
-    def should_throttle(self, ts: float, direction: str) -> bool:
-        if (self.last_action + self.throttle) > ts:
+    def should_throttle(self, ts: float, direction: str, lifecycle: str) -> bool:
+        if (lifecycle == "start"):
+            if self.last_duration < self.starting_throttle or ts - self.direction_stop > self.starting_throttle:
+            	self.direction_start = ts
+            print("BEGIN_THROTTLE")
+            return True
+        elif (lifecycle == "stop"):
+            self.direction_stop = ts
+            self.last_duration = self.direction_stop - self.direction_start
+            
+            print("STOP THROTTLE", self.last_duration, ts - self.last_duration, self.starting_throttle)
+            return ts - self.direction_start > self.starting_throttle
+        
+        if (self.last_action + self.throttle) > ts or (ts - self.direction_start) < self.starting_throttle:
+            print("THROTTLE")
             return True
         self.last_action = ts
+        print("NO_THROTTLE")
         return False
     
 @dataclass
@@ -80,7 +102,7 @@ class HummingBird:
             keypress_key("down"),
             action_key(actions.core.repeat),
             action_key(actions.edit.undo),
-            FlatThrottler(0.05, 0.2)
+            FlatThrottler(0.05, 0.3)
         )
         
     def set_direction_actions(self, da: DirectionActions):
@@ -93,7 +115,7 @@ class HummingBird:
     def tick_directions(self):
         ts = time.time()
         for direction in self.current_directions:
-            if self.directions.throttler.should_throttle(ts, direction):
+            if self.directions.throttler.should_throttle(ts, direction, ""):
                 continue
             if direction == "up":
 	            self.directions.up(ts)
@@ -128,28 +150,28 @@ class HummingBird:
         self.current_directions = []
         self.directions.throttler.clear()
 
-    def up(self, ts: float, set_directions=True):
+    def up(self, ts: float, set_directions=True, lifecycle=""):
         if set_directions:
             self.set_direction("up")        
-        if not self.job and not self.directions.throttler.should_throttle(ts, "up"):
+        if not self.job and not self.directions.throttler.should_throttle(ts, "up", lifecycle):
             self.directions.up(ts)
     
-    def left(self, ts: float, set_directions=True):
+    def left(self, ts: float, set_directions=True, lifecycle=""):
         if set_directions:
             self.set_direction("left")
-        if not self.job and not self.directions.throttler.should_throttle(ts, "left"):
+        if not self.job and not self.directions.throttler.should_throttle(ts, "left", lifecycle):
             self.directions.left(ts)
     
-    def right(self, ts: float, set_directions=True):
+    def right(self, ts: float, set_directions=True, lifecycle=""):
         if set_directions:
             self.set_direction("right")
-        if not self.job and not self.directions.throttler.should_throttle(ts, "right"):
+        if not self.job and not self.directions.throttler.should_throttle(ts, "right", lifecycle):
             self.directions.right(ts)
         
-    def down(self, ts: float, set_directions=True):
+    def down(self, ts: float, set_directions=True, lifecycle=""):
         if set_directions:
-            self.set_direction("down")    
-        if not self.job and not self.directions.throttler.should_throttle(ts, "down"):
+            self.set_direction("down")
+        if not self.job and not self.directions.throttler.should_throttle(ts, "down", lifecycle):
             self.directions.down(ts)
     
     def forward(self, ts: float):
@@ -159,13 +181,13 @@ class HummingBird:
                     continue
             
                 if direction == "up":
-                    self.up(ts, False)
+                    self.up(ts, set_directions=False)
                 elif direction == "left":
-                    self.left(ts, False)
+                    self.left(ts, set_directions=False)
                 elif direction == "right":
-                    self.right(ts, False)
+                    self.right(ts, set_directions=False)
                 elif direction == "down":
-                    self.down(ts, False)
+                    self.down(ts, set_directions=False)
         else:
             self.directions.forward(ts)
             
@@ -176,13 +198,13 @@ class HummingBird:
                     continue
             
                 if direction == "up":
-                    self.down(ts, False)
+                    self.down(ts, set_directions=False)
                 elif direction == "left":
-                    self.right(ts, False)
+                    self.right(ts, set_directions=False)
                 elif direction == "right":
-                    self.left(ts, False)
+                    self.left(ts, set_directions=False)
                 elif direction == "down":
-                    self.up(ts, False)
+                    self.up(ts, set_directions=False)
         else:
             self.directions.backward(ts)
         
@@ -197,7 +219,7 @@ hummingbird_directions = {
         keypress_key("down"),
         action_key(actions.core.repeat),
         action_key(actions.edit.undo),
-        FlatThrottler(0.05)
+        FlatThrottler(0.1, 0.3)
     ),
 	"arrows_word": DirectionActions(
 	    "mono",
@@ -207,7 +229,7 @@ hummingbird_directions = {
         keypress_key("down"),
         action_key(actions.core.repeat),
         action_key(actions.edit.undo),
-        FlatThrottler(0.1)
+        FlatThrottler(0.1, 0.3)
     ),
 	"select": DirectionActions(
 	    "mono",
@@ -217,7 +239,7 @@ hummingbird_directions = {
         action_key(actions.edit.extend_down),
         action_key(actions.core.repeat),
         action_key(actions.edit.undo),
-        FlatThrottler(0.1)
+        FlatThrottler(0.1, 0.3)
     ),
 	"select_word": DirectionActions(
 		"mono",
@@ -227,7 +249,7 @@ hummingbird_directions = {
         action_key(actions.edit.extend_down),
         action_key(actions.core.repeat),
         action_key(actions.edit.undo),
-        FlatThrottler(0.05)
+        FlatThrottler(0.1, 0.3)
     ),    
     "cursor": DirectionActions(
         "mono",
@@ -237,7 +259,7 @@ hummingbird_directions = {
         mouse_move_action(0, 6),
         action_key(actions.core.repeat),
         action_key(actions.edit.undo),
-        InputThrottler()
+		FlatThrottler(0.001, 0.2)
     ),
     "jira": DirectionActions(
     	"mono",    	
@@ -247,7 +269,7 @@ hummingbird_directions = {
         keypress_key("j"),
         action_key(actions.core.repeat),
         action_key(actions.edit.undo),
-        FlatThrottler(0.1)
+        FlatThrottler(0.1, 0.3)
     )
 }
 
@@ -259,25 +281,25 @@ mod.tag("humming_bird_overrides", desc="Tag to override knausj commands to inter
 @mod.action_class
 class Actions:
                 
-    def hummingbird_up(ts: float):
+    def hummingbird_up(ts: float, mode: str = "stop"):
         """Activate the action related to the up direction of the humming bird"""
         global hb
-        hb.up(ts)
+        hb.up(ts, lifecycle=mode)
                 
-    def hummingbird_left(ts: float):
+    def hummingbird_left(ts: float, mode: str = "stop"):
         """Activate the action related to the left direction of the humming bird"""
         global hb
-        hb.left(ts)
+        hb.left(ts, lifecycle=mode)
         
-    def hummingbird_right(ts: float):
+    def hummingbird_right(ts: float, mode: str = "stop"):
         """Activate the action related to the right direction of the humming bird"""
         global hb
-        hb.right(ts)
+        hb.right(ts, lifecycle=mode)
         
-    def hummingbird_down(ts: float):
+    def hummingbird_down(ts: float, mode: str = "stop"):
         """Activate the action related to the down direction of the humming bird"""
         global hb
-        hb.down(ts)
+        hb.down(ts, lifecycle=mode)
         
     def hummingbird_forward(ts: float):
         """Repeats the current directions, or repeats the last command"""

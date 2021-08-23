@@ -17,9 +17,11 @@ falcon fly:
 	user.switch_parrot_mode("parrot_eyemouse")
 
 humming fly:
-	key(f4)
 	user.switch_parrot_mode("parrot_mouse")
 	user.hummingbird_set("cursor")
+humming$:
+	user.switch_parrot_mode("parrot_mouse")
+
 	
 pidgeon fly:
 	speech.disable()
@@ -31,11 +33,3 @@ parrot(whistle):
 	edit.paste()
 parrot(pop):
 	key(backspace)
-	
-parrot(chopper):
-	user.woodpecker_start(ts)
-parrot(chopper:repeat):
-	user.woodpecker_drill(ts)
-parrot(chopper:stop):
-	user.woodpecker_stop(ts)
-	

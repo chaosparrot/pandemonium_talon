@@ -25,11 +25,11 @@ def switch_parrot_mode(mode):
         if current_parrot_mode != "":
             actions.mode.disable(f"user.{current_parrot_mode}")
             if has_talon_hud_actions:
-                actions.user.remove_status_icon("parrot_icon")
+                actions.user.hud_remove_status_icon("parrot_icon")
         actions.mode.enable(f"user.{mode}")
         current_parrot_mode = mode
         if has_talon_hud_actions:
-            actions.user.add_status_icon("parrot_icon", current_parrot_mode, parrot_modes[current_parrot_mode])        
+            actions.user.hud_add_status_icon("parrot_icon", current_parrot_mode)
 
 def disable_parrot_mode():
     global current_parrot_mode
@@ -41,7 +41,7 @@ def disable_parrot_mode():
     for parrot_mode in parrot_modes.keys():
         actions.mode.disable(f"user.{parrot_mode}")
     if has_talon_hud_actions:
-        actions.user.remove_status_icon("parrot_icon")
+        actions.user.hud_remove_status_icon("parrot_icon")
         
 
 @mod.action_class
