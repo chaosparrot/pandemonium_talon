@@ -1,5 +1,5 @@
 from talon import actions, cron, Context, Module, ctrl
-from typing import Callable, Tuple, TypedDict
+from typing import Callable, Tuple, TypedDict, Any
 from dataclasses import dataclass, asdict
 from talon.screen import Screen, main_screen
 import time
@@ -68,6 +68,7 @@ class DirectionActions:
     forward: Callable[[float], None]
     backward: Callable[[float], None]
     throttler: InputThrottler
+    visualizer: Any = None
 
 def noop_key(ts: float):
     pass
@@ -86,7 +87,7 @@ def mouse_move_action(x_offset: float, y_offset: float):
 
 
 direction_exclusion_mono = "mono" # Cancels all directions when a new direction is set
-direction_exclusion_diagonal = "opposite" # Cancels only the opposite direciton when a new directoin is set
+direction_exclusion_diagonal = "opposite" # Cancels only the opposite direction when a new direction is set
 class HummingBird:
     
     job = None
@@ -109,7 +110,7 @@ class HummingBird:
         self.directions = da
         
     def start_continuous_job(self):
-        self.end_continuous_job()	
+        self.end_continuous_job()
         self.job = cron.interval("16ms", self.tick_directions)
 
     def tick_directions(self):
@@ -125,10 +126,13 @@ class HummingBird:
                 self.directions.right(ts)
             elif direction == "down":
                 self.directions.down(ts)
+        if self.directions.visualizer is not None:
+            self.directions.visualizer.set_directions(self.current_directions)
 
     def end_continuous_job(self):
         cron.cancel(self.job)
         self.job = None
+        self.directions.visualizer.set_directions([])        
 		
     def set_direction(self, new_direction):
         if (self.directions.cancel_type == "mono"):
@@ -145,32 +149,45 @@ class HummingBird:
         
         if new_direction not in self.current_directions:
             self.current_directions.append(new_direction)
+        
+        if self.directions.visualizer is not None:
+            self.directions.visualizer.set_directions(self.current_directions)
 
     def clear_directions(self):
         self.current_directions = []
         self.directions.throttler.clear()
+        if self.directions.visualizer is not None:
+            self.directions.visualizer.set_directions(self.current_directions)
 
     def up(self, ts: float, set_directions=True, lifecycle=""):
         if set_directions:
-            self.set_direction("up")        
+            self.set_direction("up")
+            if lifecycle == "stop" and self.directions.visualizer is not None:
+                self.directions.visualizer.set_directions([])
         if not self.job and not self.directions.throttler.should_throttle(ts, "up", lifecycle):
             self.directions.up(ts)
     
     def left(self, ts: float, set_directions=True, lifecycle=""):
         if set_directions:
             self.set_direction("left")
+            if lifecycle == "stop" and self.directions.visualizer is not None:
+                self.directions.visualizer.set_directions([])
         if not self.job and not self.directions.throttler.should_throttle(ts, "left", lifecycle):
             self.directions.left(ts)
     
     def right(self, ts: float, set_directions=True, lifecycle=""):
         if set_directions:
             self.set_direction("right")
+            if lifecycle == "stop" and self.directions.visualizer is not None:
+                self.directions.visualizer.set_directions([])
         if not self.job and not self.directions.throttler.should_throttle(ts, "right", lifecycle):
             self.directions.right(ts)
         
     def down(self, ts: float, set_directions=True, lifecycle=""):
         if set_directions:
             self.set_direction("down")
+            if lifecycle == "stop" and self.directions.visualizer is not None:
+                self.directions.visualizer.set_directions([])
         if not self.job and not self.directions.throttler.should_throttle(ts, "down", lifecycle):
             self.directions.down(ts)
     
@@ -210,6 +227,53 @@ class HummingBird:
         
 hb = HummingBird()
 
+class DirectionVisualizer:
+    enabled = True
+    direction = "top"
+
+    def set_directions(self, directions):
+        enabled = False
+        direction = ""        
+        if len(directions) > 0:
+            enabled = True
+            if "up" in directions:
+               direction += "top"
+            elif "down" in directions:
+               direction += "bottom"
+            if "left" in directions:
+               direction += "left"
+            elif "right" in directions:
+               direction += "right"
+        
+        print( "TEST!", directions )
+
+        # Only visualize a change
+        if enabled is not self.enabled or direction is not self.direction:
+            self.enabled = enabled
+            self.direction = direction if direction is not "" else self.direction
+            self.visualize()
+
+    def visualize(self):
+        opacity = "FF" if self.enabled else "77"
+        colour = "777777" + opacity
+
+        if self.direction == "top":
+            actions.user.hud_add_ability("movement", "top", colour, 1, 0, 0, -1)
+        elif self.direction == "topleft":
+            actions.user.hud_add_ability("movement", "topleft", colour, 1, 0, 2, 2)
+        elif self.direction == "topright":
+            actions.user.hud_add_ability("movement", "topright", colour, 1, 0, -2, 2)
+        elif self.direction == "left":
+            actions.user.hud_add_ability("movement",  "left", colour, 1, 0, -2, 0)
+        elif self.direction == "right":
+            actions.user.hud_add_ability("movement", "right", colour, 1, 0, 2, 0)
+        elif self.direction == "bottomleft":
+            actions.user.hud_add_ability("movement", "bottomleft", colour, 1, 0, 2, -2)
+        elif self.direction == "bottomright":
+            actions.user.hud_add_ability("movement", "bottomright", colour, 1, 0, -2, -2)
+        elif self.direction == "bottom":
+            actions.user.hud_add_ability("movement", "bottom", colour, 1, 0, 0, 2)
+
 hummingbird_directions = {
     "arrows": DirectionActions(
     	"mono",
@@ -219,7 +283,8 @@ hummingbird_directions = {
         keypress_key("down"),
         action_key(actions.core.repeat),
         action_key(actions.edit.undo),
-        FlatThrottler(0.1, 0.3)
+        FlatThrottler(0.1, 0.3),
+        DirectionVisualizer()
     ),
 	"arrows_word": DirectionActions(
 	    "mono",
@@ -259,7 +324,8 @@ hummingbird_directions = {
         mouse_move_action(0, 6),
         action_key(actions.core.repeat),
         action_key(actions.edit.undo),
-		FlatThrottler(0.001, 0.2)
+		FlatThrottler(0.001, 0.2),
+        DirectionVisualizer()        
     ),
     "jira": DirectionActions(
     	"mono",    	
@@ -290,7 +356,7 @@ class Actions:
         """Activate the action related to the left direction of the humming bird"""
         global hb
         hb.left(ts, lifecycle=mode)
-        
+                
     def hummingbird_right(ts: float, mode: str = "stop"):
         """Activate the action related to the right direction of the humming bird"""
         global hb
