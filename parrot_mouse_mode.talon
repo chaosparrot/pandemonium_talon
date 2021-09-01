@@ -39,9 +39,9 @@ parrot(palate_click):
 	mode.enable("command")
 	user.disable_parrot_modes()
 	
-parrot(ee):
-	key(f4)
-	user.switch_parrot_mode("parrot_eyemouse")
+#parrot(ee):
+#	key(f4)
+#	user.switch_parrot_mode("parrot_eyemouse")
 	
 parrot(ue):
 	user.press_virtual_keybird_key(ts)
@@ -54,28 +54,28 @@ humming fly:
 	user.hummingbird_set("cursor")
 
 parrot(ch):
-	user.hummingbird_continuous()
+	user.hummingbird2_continuous()
 parrot(hmm):
-	user.hummingbird_down(ts, "start")
+	user.hummingbird2_down(ts, "start")
 parrot(hmm:repeat):
-	user.hummingbird_down(ts, "repeat")
+	user.hummingbird2_down(ts, "repeat")
 parrot(hmm:stop):
-	user.hummingbird_down(ts, "stop")
+	user.hummingbird2_down(ts, "stop")
 parrot(hurr):
-	user.hummingbird_right(ts, "start")
+	user.hummingbird2_right(ts, "start")
 parrot(hurr:repeat):
-	user.hummingbird_right(ts, "repeat")
+	user.hummingbird2_right(ts, "repeat")
 parrot(hurr:stop):
-	user.hummingbird_right(ts, "stop")
+	user.hummingbird2_right(ts, "stop")
 parrot(yee):
-	user.hummingbird_up(ts, "start")
+	user.hummingbird2_up(ts, "start")
 parrot(yee:repeat):
-	user.hummingbird_up(ts, "repeat")
+	user.hummingbird2_up(ts, "repeat")
 parrot(yee:stop):
-	user.hummingbird_up(ts, "stop")
+	user.hummingbird2_up(ts, "stop")
 parrot(lll):
-	user.hummingbird_left(ts, "start")
+	user.hummingbird2_left(ts, "start")
 parrot(lll:repeat):
-	user.hummingbird_left(ts, "repeat")
+	user.hummingbird2_left(ts, "repeat")
 parrot(lll:stop):
-	user.hummingbird_left(ts, "stop")
+	user.hummingbird2_left(ts, "stop")

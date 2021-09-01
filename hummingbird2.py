@@ -18,10 +18,6 @@ class HummingEvent(Enum):
 class HummingExclusionStrategy(Enum):
     MONO = 0 # Single direction can be activate at the same time
 
-# Only triggers actions that do not have any clean up actions related to them
-def should_trigger_discrete(event):
-    return event < HummingEvent.STOP
-
 class InputThrottler:
     """Interface used for throttling inputs"""
     
@@ -50,6 +46,7 @@ class FlatThrottler(InputThrottler):
         self.clear()
 
     def clear(self):
+        self.last_action_dir = ""
         self.last_action = 0.0
         self.direction_start = 0.0
         self.direction_stop = 0.0
@@ -57,7 +54,6 @@ class FlatThrottler(InputThrottler):
         
     def determine_event(self, ts: float, direction: str, event: HummingEvent) -> HummingEvent:
         """Determine the event for the given direction given the current throttling state"""    
-        # TODO PROPER STATE SENDING BASED ON STARTING THROTTLE W/R/T FIRST REPEAT
         
         # If a starting throttle as been set
         # We want to make sure the starting event does not get activated until later
@@ -65,18 +61,24 @@ class FlatThrottler(InputThrottler):
             if self.last_duration < self.starting_throttle or ts - self.direction_stop > self.starting_throttle:
                 self.direction_start = ts
                 self.last_action = ts
-                return event
-
+                
+                if self.starting_throttle > 0:
+                    return HummingEvent.THROTTLED
+                else:
+                    self.last_action_dir = direction
+                    return event
+                
             return HummingEvent.THROTTLED
             
         # Stop event is special as it can activate a discrete action if it happens
         # Before the starting threshold has been reached
         elif (event == HummingEvent.STOP):
+            self.last_action_dir = ""        
             self.direction_stop = ts
             self.last_duration = self.direction_stop - self.direction_start
             
             if self.starting_throttle > 0.0:
-                return HummingEvent.THROTTLED if ts - self.direction_start > self.starting_throttle else HummingEvent.DISCRETE
+                return HummingEvent.STOP if ts - self.direction_start > self.starting_throttle else HummingEvent.DISCRETE
             else:
                 return event
         
@@ -86,36 +88,112 @@ class FlatThrottler(InputThrottler):
         
         self.last_action = ts
         
+        # In case we are dealing with a starting throttle
+        # The actual start is delayed by the throttle
+        # So we override the repeat event with a start event
+        if self.last_action_dir == "" and ts - self.direction_start >= self.starting_throttle:
+            self.last_action_dir = direction
+            event = HummingEvent.START            
+        
         return event
 
+class DirectionVisualizer:
+    enabled = True
+    direction = "top"
+
+    def set_directions(self, directions, enabled=True, blink=False):
+        direction = ""        
+        if len(directions) > 0:
+            if "up" in directions:
+               direction += "top"
+            elif "down" in directions:
+               direction += "bottom"
+            if "left" in directions:
+               direction += "left"
+            elif "right" in directions:
+               direction += "right"
+        
+        # Only visualize a change
+        if enabled is not self.enabled or direction is not self.direction:
+            self.enabled = enabled
+            self.direction = direction if direction != "" else self.direction
+            self.visualize(blink)
+
+    def visualize(self, blink):
+        opacity = "FF" if self.enabled else "77"
+        colour = "777777" + opacity
+        
+        activated = 1 if blink else 0
+
+        if self.direction == "top":
+            actions.user.hud_add_ability("movement", "top", colour, 1, activated, 0, -1)
+        elif self.direction == "topleft":
+            actions.user.hud_add_ability("movement", "topleft", colour, 1, activated, 2, 2)
+        elif self.direction == "topright":
+            actions.user.hud_add_ability("movement", "topright", colour, 1, activated, -2, 2)
+        elif self.direction == "left":
+            actions.user.hud_add_ability("movement",  "left", colour, 1, activated, -2, 0)
+        elif self.direction == "right":
+            actions.user.hud_add_ability("movement", "right", colour, 1, activated, 2, 0)
+        elif self.direction == "bottomleft":
+            actions.user.hud_add_ability("movement", "bottomleft", colour, 1, activated, 2, -2)
+        elif self.direction == "bottomright":
+            actions.user.hud_add_ability("movement", "bottomright", colour, 1, activated, -2, -2)
+        elif self.direction == "bottom":
+            actions.user.hud_add_ability("movement", "bottom", colour, 1, activated, 0, 2)
+
+
 @dataclass
-class DirectionActions2:
+class DirectionActions:
     up: Callable[[float], None]
     left: Callable[[float], None]
     right: Callable[[float], None]
     down: Callable[[float], None]
     throttler: InputThrottler
 
+# Only triggers actions that do not have any clean up actions related to them
+def should_trigger_discrete(event):
+    return event < HummingEvent.STOP
+
 def print_key(key: str):
     return lambda ts, event: print("Pressed key " + key + " on event " + str(event))
 
-class HummingBird2:
+def action_key(action):
+    return lambda ts, event: action() if should_trigger_discrete(event) else 1
+    
+def keypress_key(key):
+    return lambda ts, event: actions.key(key) if should_trigger_discrete(event) else 1
+
+def mouse_move_action(x_offset: float, y_offset: float):
+    return lambda ts, event, x_offset=x_offset, y_offset=y_offset: actions.user.mouse_relative_move(x_offset, y_offset) \
+        if should_trigger_discrete(event) else 1
+
+def keyhold_key(key):
+    return lambda ts, event: actions.key(key + ":down") if event == HummingEvent.START else \
+        actions.key(key + ":up") if event == HummingEvent.STOP else 1
+
+class HummingBird:
     paused = False
     job = None
     directions = []
+    visualizer = None
     
     direction_actions = None
     exclusion_strategy = HummingExclusionStrategy.MONO
     
-    def __init__(self):
-        self.direction_actions = DirectionActions2(
+    def __init__(self, visualizer: DirectionVisualizer):
+        self.visualizer = visualizer
+        self.direction_actions = DirectionActions(
             print_key("up"),
             print_key("left"),
             print_key("right"),
             print_key("down"),
-            FlatThrottler(0.1)
+            FlatThrottler(0.2, 0.2)
         )
-        
+
+    def set_direction_actions(self, da: DirectionActions):
+        self.direction_actions = da
+
     def get_action_by_direction(self, direction):
         if direction == "up":
             return self.direction_actions.up
@@ -182,23 +260,26 @@ class HummingBird2:
         else:
             self.remove_direction(new_direction, ts)
         
-    # TODO THROTTLE
     def add_direction(self, direction, ts):
         if direction not in self.directions:
             event = self.direction_actions.throttler.determine_event(ts, direction, HummingEvent.START)
             self.get_action_by_direction(direction)(ts, event)
             self.directions.append(direction)
+            self.visualizer.set_directions(self.directions, event == HummingEvent.START)
             
     def repeat_direction(self, direction, ts):
         if direction in self.directions:
             event = self.direction_actions.throttler.determine_event(ts, direction, HummingEvent.REPEAT)
             self.get_action_by_direction(direction)(ts, event)
+            if event == HummingEvent.REPEAT:
+                self.visualizer.set_directions(self.directions)
             
     def remove_direction(self, direction, ts):
         if direction in self.directions:
             event = self.direction_actions.throttler.determine_event(ts, direction, HummingEvent.STOP)        
-            self.get_action_by_direction(direction)(ts, event)
+            self.get_action_by_direction(direction)(ts, event)            
             self.directions.remove(direction)
+            self.visualizer.set_directions(self.directions, False, event != HummingEvent.STOP)
 
     def exclude_directions(self, direction: str, ts):
         directions_to_clear = []
@@ -212,6 +293,7 @@ class HummingBird2:
     def clear_directions(self):
         self.update_directions(HummingEvent.STOP)
         self.directions = []
+        self.visualizer.set_directions(self.directions)        
 
     # Direction actions
     def up(self, ts: float, lifecycle: str):
@@ -229,15 +311,65 @@ class HummingBird2:
     def forward(self, ts: float):
         if len(self.directions) > 0:
             for direction in self.directions:
-                self.get_action_by_direction(direction)(ts, HummingEvent.REPEAT)
+                event = self.direction_actions.throttler.determine_event(ts, direction, HummingEvent.REPEAT)
+                self.get_action_by_direction(direction)(ts, event)
             
     def backward(self, ts: float):
         if len(self.current_directions) > 0:
             for direction in self.current_directions:
-                self.get_action_by_opposite_direction(direction)(ts, HummingEvent.REPEAT)
+                event = self.direction_actions.throttler.determine_event(ts, direction, HummingEvent.REPEAT)            
+                self.get_action_by_opposite_direction(direction)(ts, event)
 
+hummingbird_directions = {
+    "arrows": DirectionActions(
+        keypress_key("up"),
+        keypress_key("left"),
+        keypress_key("right"),
+        keypress_key("down"),
+        FlatThrottler(0.1, 0.3),
+    ),
+	"arrows_word": DirectionActions(
+        keypress_key("up"),
+        action_key(actions.edit.word_left),
+        action_key(actions.edit.word_right),
+        keypress_key("down"),
+        FlatThrottler(0.1, 0.3)
+    ),
+	"select": DirectionActions(
+        action_key(actions.edit.extend_up),
+        action_key(actions.edit.extend_left),
+        action_key(actions.edit.extend_right),
+        action_key(actions.edit.extend_down),
+        FlatThrottler(0.1, 0.3)
+    ),
+	"select_word": DirectionActions(
+        action_key(actions.edit.extend_up),
+        action_key(actions.edit.extend_word_left),
+        action_key(actions.edit.extend_word_right),
+        action_key(actions.edit.extend_down),
+        FlatThrottler(0.1, 0.3)
+    ),    
+    "cursor": DirectionActions(
+        mouse_move_action(0, -6),
+        mouse_move_action(-6, 0),
+        mouse_move_action(6, 0),
+        mouse_move_action(0, 6),
+		FlatThrottler(0.001, 0.2),
+    ),
+    "jira": DirectionActions(
+        keypress_key("k"),
+        keypress_key("p"),
+        keypress_key("n"),
+        keypress_key("j"),
+        FlatThrottler(0.1, 0.3)
+    )
+}
+
+ctx = Context()
 mod = Module()
-hb = HummingBird2()
+mod.tag("humming_bird", desc="Tag whether or not humming bird should be used")
+mod.tag("humming_bird_overrides", desc="Tag to override knausj commands to interlace humming bird overrides in them")
+hb = HummingBird(DirectionVisualizer())
 
 @mod.action_class
 class Actions:
@@ -291,3 +423,12 @@ class Actions:
         """Clears all current directions"""
         global hb
         hb.clear_directions()
+        
+    def hummingbird_set(type: str):
+        """Sets the hummingbird control type"""
+        global hb, hummingbird_directions
+        hb.set_direction_actions(hummingbird_directions["arrows"] if type not in hummingbird_directions else hummingbird_directions[type])
+        
+    def add_noise_log(action: str, noise: str):
+        """Add a log visualizing the action and the noise"""
+        actions.user.hud_add_log("command", "<*" + action + "/> «" + noise + "»")
