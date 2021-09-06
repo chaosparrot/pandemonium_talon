@@ -227,53 +227,6 @@ class HummingBird:
         
 hb = HummingBird()
 
-class DirectionVisualizer:
-    enabled = True
-    direction = "top"
-
-    def set_directions(self, directions):
-        enabled = False
-        direction = ""        
-        if len(directions) > 0:
-            enabled = True
-            if "up" in directions:
-               direction += "top"
-            elif "down" in directions:
-               direction += "bottom"
-            if "left" in directions:
-               direction += "left"
-            elif "right" in directions:
-               direction += "right"
-        
-        print( "TEST!", directions )
-
-        # Only visualize a change
-        if enabled is not self.enabled or direction is not self.direction:
-            self.enabled = enabled
-            self.direction = direction if direction is not "" else self.direction
-            self.visualize()
-
-    def visualize(self):
-        opacity = "FF" if self.enabled else "77"
-        colour = "777777" + opacity
-
-        if self.direction == "top":
-            actions.user.hud_add_ability("movement", "top", colour, 1, 0, 0, -1)
-        elif self.direction == "topleft":
-            actions.user.hud_add_ability("movement", "topleft", colour, 1, 0, 2, 2)
-        elif self.direction == "topright":
-            actions.user.hud_add_ability("movement", "topright", colour, 1, 0, -2, 2)
-        elif self.direction == "left":
-            actions.user.hud_add_ability("movement",  "left", colour, 1, 0, -2, 0)
-        elif self.direction == "right":
-            actions.user.hud_add_ability("movement", "right", colour, 1, 0, 2, 0)
-        elif self.direction == "bottomleft":
-            actions.user.hud_add_ability("movement", "bottomleft", colour, 1, 0, 2, -2)
-        elif self.direction == "bottomright":
-            actions.user.hud_add_ability("movement", "bottomright", colour, 1, 0, -2, -2)
-        elif self.direction == "bottom":
-            actions.user.hud_add_ability("movement", "bottom", colour, 1, 0, 0, 2)
-
 hummingbird_directions = {
     "arrows": DirectionActions(
     	"mono",
@@ -284,7 +237,6 @@ hummingbird_directions = {
         action_key(actions.core.repeat),
         action_key(actions.edit.undo),
         FlatThrottler(0.1, 0.3),
-        DirectionVisualizer()
     ),
 	"arrows_word": DirectionActions(
 	    "mono",
@@ -325,7 +277,6 @@ hummingbird_directions = {
         action_key(actions.core.repeat),
         action_key(actions.edit.undo),
 		FlatThrottler(0.001, 0.2),
-        DirectionVisualizer()        
     ),
     "jira": DirectionActions(
     	"mono",    	

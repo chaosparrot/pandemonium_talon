@@ -28,10 +28,6 @@ parrot(tut):
 	mouse_click(0)
 	key(ctrl:up)
 
-parrot(pop):
-	user.power_momentum_stop()
-	user.hummingbird_clear()
-	user.hummingbird_stop()
 parrot(ae):
 	user.kingfisher_click(1)
 	
@@ -53,8 +49,23 @@ falcon fly:
 humming fly:
 	user.hummingbird_set("cursor")
 
+hummingbird test:
+    user.hummingbird2_set("wasd")
+	
+hummingbird log:
+    user.hummingbird2_set("log")
+
+
 parrot(ch):
 	user.hummingbird2_continuous()
+parrot(pop):
+	user.power_momentum_stop()
+	user.hummingbird2_clear()
+	user.hummingbird2_stop()
+parrot(oh):
+    user.hummingbird2_clear("horizontal")
+parrot(oo):
+    user.hummingbird2_clear("vertical")
 parrot(hmm):
 	user.hummingbird2_down(ts, "start")
 parrot(hmm:repeat):

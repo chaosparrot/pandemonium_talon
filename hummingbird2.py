@@ -17,6 +17,7 @@ class HummingEvent(Enum):
 
 class HummingExclusionStrategy(Enum):
     MONO = 0 # Single direction can be activate at the same time
+    OPPOSITE = 1 # Excludes directions only opposite of one another
 
 class InputThrottler:
     """Interface used for throttling inputs"""
@@ -67,8 +68,9 @@ class FlatThrottler(InputThrottler):
                 else:
                     self.last_action_dir = direction
                     return event
-                
-            return HummingEvent.THROTTLED
+            
+            if self.starting_throttle > 0:            
+                return HummingEvent.THROTTLED
             
         # Stop event is special as it can activate a discrete action if it happens
         # Before the starting threshold has been reached
@@ -83,7 +85,7 @@ class FlatThrottler(InputThrottler):
                 return event
         
         # For all the repeat events, do throttle checking regularly
-        if (self.last_action + self.throttle) > ts or (ts - self.direction_start) < self.starting_throttle:
+        if (self.last_action + self.throttle) > ts and self.throttle > 0 or (ts - self.direction_start) < self.starting_throttle:
             return HummingEvent.THROTTLED
         
         self.last_action = ts
@@ -153,7 +155,7 @@ class DirectionActions:
 
 # Only triggers actions that do not have any clean up actions related to them
 def should_trigger_discrete(event):
-    return event < HummingEvent.STOP
+    return event.value < HummingEvent.STOP.value
 
 def print_key(key: str):
     return lambda ts, event: print("Pressed key " + key + " on event " + str(event))
@@ -179,7 +181,7 @@ class HummingBird:
     visualizer = None
     
     direction_actions = None
-    exclusion_strategy = HummingExclusionStrategy.MONO
+    exclusion_strategy = HummingExclusionStrategy.OPPOSITE
     
     def __init__(self, visualizer: DirectionVisualizer):
         self.visualizer = visualizer
@@ -188,9 +190,9 @@ class HummingBird:
             print_key("left"),
             print_key("right"),
             print_key("down"),
-            FlatThrottler(0.2, 0.2)
+            FlatThrottler(0.0, 0.0)            
         )
-
+            
     def set_direction_actions(self, da: DirectionActions):
         self.direction_actions = da
 
@@ -205,14 +207,18 @@ class HummingBird:
             return self.direction_actions.down
     
     def get_action_by_opposite_direction(self, direction):
+        opposite_direction = get_opposite_direction(direction)
+        return get_action_by_direction(opposite_direction)
+            
+    def get_opposite_direction(self, direction):
         if direction == "up":
-            return self.direction_actions.down
+            return "down"
         elif direction == "left":
-            return self.direction_actions.right
+            return "right"
         elif direction == "right":
-            return self.direction_actions.left
+            return "left"
         elif direction == "down":
-            return self.direction_actions.up
+            return "up"    
         
     # Continuous action triggers
     def start_continuous_job(self):
@@ -231,6 +237,7 @@ class HummingBird:
             self.update_directions(ts, HummingEvent.STOP)
             
     def end_continuous_job(self):
+        ts = time.time()        
         if self.job:
             if not self.paused:
                 self.update_directions(ts, HummingEvent.STOP)        
@@ -257,7 +264,7 @@ class HummingBird:
             self.add_direction(new_direction, ts)
         elif lifecycle == "repeat" and not self.job:
             self.repeat_direction(new_direction, ts)
-        else:
+        elif lifecycle == "stop" and not self.job:
             self.remove_direction(new_direction, ts)
         
     def add_direction(self, direction, ts):
@@ -285,20 +292,26 @@ class HummingBird:
         directions_to_clear = []
         if self.exclusion_strategy == HummingExclusionStrategy.MONO:
             directions_to_clear = [x for x in self.directions if x != direction]
+        elif self.exclusion_strategy == HummingExclusionStrategy.OPPOSITE:
+            directions_to_clear = [x for x in self.directions if x == self.get_opposite_direction(direction)]
         
         for excluded_direction in directions_to_clear:
-            self.get_action_by_direction(direction)(ts, HummingEvent.STOP)
+            self.get_action_by_direction(excluded_direction)(ts, HummingEvent.STOP)
             self.directions.remove(excluded_direction)
 
-    def clear_directions(self):
-        self.update_directions(HummingEvent.STOP)
-        self.directions = []
-        self.visualizer.set_directions(self.directions)        
+    def clear_directions(self, directions: list[str] = None):
+        ts = time.time()
+        
+        if directions == None:
+            directions = ["up", "left", "right", "down"]
+        for direction in directions:
+            self.remove_direction(direction, ts)
+        self.visualizer.set_directions(self.directions)
 
     # Direction actions
     def up(self, ts: float, lifecycle: str):
         self.activate_direction("up", ts, lifecycle)
-        
+
     def left(self, ts: float, lifecycle: str):
         self.activate_direction("left", ts, lifecycle)
     
@@ -362,6 +375,20 @@ hummingbird_directions = {
         keypress_key("n"),
         keypress_key("j"),
         FlatThrottler(0.1, 0.3)
+    ),
+    "wasd": DirectionActions(
+        keyhold_key("w"),
+        keyhold_key("a"),
+        keyhold_key("d"),
+        keyhold_key("s"),
+        FlatThrottler(0.0, 0.0),
+    ),
+    "log": DirectionActions(
+        print_key("up"),
+        print_key("left"),
+        print_key("right"),
+        print_key("down"),
+        FlatThrottler(0.0, 0.0)
     )
 }
 
@@ -419,12 +446,17 @@ class Actions:
         global hb
         hb.end_continuous_job()
 
-    def hummingbird2_clear():
-        """Clears all current directions"""
+    def hummingbird2_clear(directions: str = None):
+        """Clears all or some of the current directions"""
         global hb
-        hb.clear_directions()
+        clear_directions = directions
+        if directions == "horizontal":
+            clear_directions = ["left", "right"]
+        elif directions == "vertical":
+            clear_directions = ["up", "down"]
+        hb.clear_directions(clear_directions)
         
-    def hummingbird_set(type: str):
+    def hummingbird2_set(type: str):
         """Sets the hummingbird control type"""
         global hb, hummingbird_directions
         hb.set_direction_actions(hummingbird_directions["arrows"] if type not in hummingbird_directions else hummingbird_directions[type])
