@@ -58,10 +58,13 @@ hummingbird log:
 
 parrot(ch):
 	user.hummingbird2_continuous()
+	user.add_noise_log("Movement", "palate")
 parrot(pop):
 	user.power_momentum_stop()
 	user.hummingbird2_clear()
 	user.hummingbird2_stop()
+	user.add_noise_log("Stand still", "pop")
+	
 parrot(oh):
     user.hummingbird2_clear("horizontal")
 parrot(oo):

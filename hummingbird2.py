@@ -100,6 +100,12 @@ class FlatThrottler(InputThrottler):
         return event
 
 class DirectionVisualizer:
+    
+    def set_directions(self, directions, enabled=True, blink=False):
+        pass
+    
+
+class StickyDirectionVisualizer(DirectionVisualizer):
     enabled = True
     direction = "top"
 
@@ -144,7 +150,6 @@ class DirectionVisualizer:
         elif self.direction == "bottom":
             actions.user.hud_add_ability("movement", "bottom", colour, 1, activated, 0, 2)
 
-
 @dataclass
 class DirectionActions:
     up: Callable[[float], None]
@@ -170,9 +175,14 @@ def mouse_move_action(x_offset: float, y_offset: float):
     return lambda ts, event, x_offset=x_offset, y_offset=y_offset: actions.user.mouse_relative_move(x_offset, y_offset) \
         if should_trigger_discrete(event) else 1
 
+def multiple_releases(key):
+    actions.key(key + ":up")
+    actions.sleep(0.010)
+    actions.key(key + ":up")
+
 def keyhold_key(key):
     return lambda ts, event: actions.key(key + ":down") if event == HummingEvent.START else \
-        actions.key(key + ":up") if event == HummingEvent.STOP else 1
+        multiple_releases(key) if event == HummingEvent.STOP else 1
 
 class HummingBird:
     paused = False
@@ -192,6 +202,9 @@ class HummingBird:
             print_key("down"),
             FlatThrottler(0.0, 0.0)            
         )
+        
+    def set_visualizer(self, visualizer: DirectionVisualizer):
+        self.visualizer = visualizer
             
     def set_direction_actions(self, da: DirectionActions):
         self.direction_actions = da
@@ -299,10 +312,10 @@ class HummingBird:
             self.get_action_by_direction(excluded_direction)(ts, HummingEvent.STOP)
             self.directions.remove(excluded_direction)
 
-    def clear_directions(self, directions: list[str] = None):
+    def clear_directions(self, directions):
         ts = time.time()
         
-        if directions == None:
+        if directions == "all":
             directions = ["up", "left", "right", "down"]
         for direction in directions:
             self.remove_direction(direction, ts)
@@ -383,6 +396,20 @@ hummingbird_directions = {
         keyhold_key("s"),
         FlatThrottler(0.0, 0.0),
     ),
+    "ijkl": DirectionActions(
+        keyhold_key("k"),
+        keyhold_key("j"),
+        keyhold_key("l"),
+        keyhold_key("i"),
+        FlatThrottler(0.0, 0.0),
+    ),
+    "menu": DirectionActions(
+        keypress_key("up"),
+        keypress_key("left"),
+        keypress_key("right"),
+        keypress_key("down"),
+        FlatThrottler(0.05, 0.2)
+    ),    
     "log": DirectionActions(
         print_key("up"),
         print_key("left"),
@@ -396,59 +423,71 @@ ctx = Context()
 mod = Module()
 mod.tag("humming_bird", desc="Tag whether or not humming bird should be used")
 mod.tag("humming_bird_overrides", desc="Tag to override knausj commands to interlace humming bird overrides in them")
-hb = HummingBird(DirectionVisualizer())
+
+charm_of_hummingbirds = {
+    'primary': HummingBird(StickyDirectionVisualizer()),
+    'secondary': HummingBird(DirectionVisualizer())
+}
+current_hummingbird_slot = "primary"
+
+def get_hummingbird_by_slot( slot: str = "" ):
+    global charm_of_hummingbirds
+    if slot == "":
+        global current_hummingbird_slot
+        slot = current_hummingbird_slot
+    return charm_of_hummingbirds[slot]
 
 @mod.action_class
 class Actions:
                 
-    def hummingbird2_up(ts: float, lifecycle: str = "stop"):
+    def hummingbird2_up(ts: float, lifecycle: str = "stop", slot: str = "" ):
         """Activate the action related to the up direction of the humming bird"""
-        global hb
+        hb = get_hummingbird_by_slot(slot)
         hb.up(ts, lifecycle)
                 
-    def hummingbird2_left(ts: float, lifecycle: str = "stop"):
+    def hummingbird2_left(ts: float, lifecycle: str = "stop", slot: str = ""):
         """Activate the action related to the left direction of the humming bird"""
-        global hb
+        hb = get_hummingbird_by_slot(slot)
         hb.left(ts, lifecycle)
                 
-    def hummingbird2_right(ts: float, lifecycle: str = "stop"):
+    def hummingbird2_right(ts: float, lifecycle: str = "stop", slot: str = ""):
         """Activate the action related to the right direction of the humming bird"""
-        global hb
+        hb = get_hummingbird_by_slot(slot)
         hb.right(ts, lifecycle)
         
-    def hummingbird2_down(ts: float, lifecycle: str = "stop"):
+    def hummingbird2_down(ts: float, lifecycle: str = "stop", slot: str = ""):
         """Activate the action related to the down direction of the humming bird"""
-        global hb
+        hb = get_hummingbird_by_slot(slot)
         hb.down(ts, lifecycle)
         
-    def hummingbird2_forward(ts: float):
+    def hummingbird2_forward(ts: float, slot: str = ""):
         """Repeats the current directions, or repeats the last command"""
-        global hb
+        hb = get_hummingbird_by_slot(slot)
         hb.forward(ts)
         
-    def hummingbird2_backward(ts: float):
+    def hummingbird2_backward(ts: float, slot: str = ""):
         """Reverses the current directions, or undoes the last edit"""
-        global hb
+        hb = get_hummingbird_by_slot(slot)
         hb.backward(ts)
         
-    def hummingbird2_continuous():
+    def hummingbird2_continuous(slot: str = ""):
         """Starts a continuous job that triggers the directions at 60Hz"""
-        global hb
+        hb = get_hummingbird_by_slot(slot)
         hb.start_continuous_job()
                 
-    def hummingbird2_pause():
+    def hummingbird2_pause(slot: str = ""):
         """Pauses the continuous job, but does not clear the directions"""
-        global hb
+        hb = get_hummingbird_by_slot(slot)
         return hb.pause_continuous_job()
         
-    def hummingbird2_stop():
+    def hummingbird2_stop(slot: str = ""):
         """Ends the continuous job"""
-        global hb
+        hb = get_hummingbird_by_slot(slot)
         hb.end_continuous_job()
 
-    def hummingbird2_clear(directions: str = None):
+    def hummingbird2_clear(directions: str = "all", slot: str = ""):
         """Clears all or some of the current directions"""
-        global hb
+        hb = get_hummingbird_by_slot(slot)
         clear_directions = directions
         if directions == "horizontal":
             clear_directions = ["left", "right"]
@@ -456,10 +495,21 @@ class Actions:
             clear_directions = ["up", "down"]
         hb.clear_directions(clear_directions)
         
-    def hummingbird2_set(type: str):
-        """Sets the hummingbird control type"""
-        global hb, hummingbird_directions
+    def hummingbird2_set(type: str, slot: str = ""):
+        """Sets the hummingbird control type"""        
+        global hummingbird_directions
+        hb = get_hummingbird_by_slot(slot)        
         hb.set_direction_actions(hummingbird_directions["arrows"] if type not in hummingbird_directions else hummingbird_directions[type])
+        
+    def hummingbird2_set_current_slot(slot: str):
+        """Sets the current hummingbird instance and unlinks the visualizer"""        
+        global current_hummingbird_slot
+        old_hb = get_hummingbird_by_slot(current_hummingbird_slot)
+        old_hb.set_visualizer(DirectionVisualizer())
+        current_hummingbird_slot = slot
+        
+        new_hb = get_hummingbird_by_slot(current_hummingbird_slot)
+        new_hb.set_visualizer(StickyDirectionVisualizer())
         
     def add_noise_log(action: str, noise: str):
         """Add a log visualizing the action and the noise"""
